@@ -40,7 +40,6 @@ The main file `Socket_Test` performs:
 
 - `Source_Code/Socket_Test`: Kinect init, angle calculation, TCP server, streaming loop, test sections
 - `Source_Code/Kinova_Python`: Kinect init, angle calculation, TCP server, streaming loop, test sections, but for Python
-- `Guide_Document.pdf`: Code sections, array indices for future Kinova integration
 
 ## 5. Requirements
 
