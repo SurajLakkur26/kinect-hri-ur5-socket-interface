@@ -1,0 +1,244 @@
+#include <Windows.h>        // Windows-specific functions and types
+#include <Kinect.h>         // Kinect SDK functions and types
+#include <iostream>         // Input/output stream
+#include <fstream>          // File stream
+#include <cmath>            // Mathematical functions and constants
+#include <string>           // String manipulation functions and types
+#include <vector>
+
+// Function to safely release resources (e.g., COM objects)
+template <class T>
+void SafeRelease(T*& p)
+{
+    if (p != nullptr)
+    {
+        p->Release();
+        p = nullptr;
+    }
+}
+
+// Structure representing a 3D vector with x, y, and z coordinates
+struct Vector3
+{
+    float x;
+    float y;
+    float z;
+
+    Vector3(float xVal, float yVal, float zVal) : x(xVal), y(yVal), z(zVal) {}
+};
+
+// Function to calculate the angle between three joints
+float CalculateAngle(const Joint& jointA, const Joint& jointB, const Joint& jointC)
+{
+    CameraSpacePoint positionA = jointA.Position;
+    CameraSpacePoint positionB = jointB.Position;
+    CameraSpacePoint positionC = jointC.Position;
+
+    Vector3 vectorAB(positionB.X - positionA.X, positionB.Y - positionA.Y, positionB.Z - positionA.Z);
+    Vector3 vectorCB(positionB.X - positionC.X, positionB.Y - positionC.Y, positionB.Z - positionC.Z);
+
+    float dotProduct = vectorAB.x * vectorCB.x + vectorAB.y * vectorCB.y + vectorAB.z * vectorCB.z;
+
+    float magnitudeAB = sqrt(vectorAB.x * vectorAB.x + vectorAB.y * vectorAB.y + vectorAB.z * vectorAB.z);
+    float magnitudeCB = sqrt(vectorCB.x * vectorCB.x + vectorCB.y * vectorCB.y + vectorCB.z * vectorCB.z);
+
+    float angle = acos(dotProduct / (magnitudeAB * magnitudeCB));
+    angle = angle * 180.0f / 3.14159f;
+
+    return angle;
+}
+
+int main()
+{
+    // Initialize Winsock
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        std::cerr << "Failed to initialize Winsock." << std::endl;
+        return 1;
+    }
+
+    // Create a socket
+    SOCKET serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (serverSocket == INVALID_SOCKET) {
+        std::cerr << "Failed to create socket." << std::endl;
+        WSACleanup();
+        return 1;
+    }
+
+    // Bind the socket to an address and port
+    sockaddr_in serverAddress{};
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_addr.s_addr = INADDR_ANY; // Bind to all available interfaces
+    serverAddress.sin_port = htons(8080);      // Use port 8080
+    
+    if (bind(serverSocket, reinterpret_cast<sockaddr*>(&serverAddress), sizeof(serverAddress)) == SOCKET_ERROR) {
+        std::cerr << "Failed to bind socket to address." << std::endl;
+        closesocket(serverSocket);
+        WSACleanup();
+        return 1;
+    }
+
+    // Start listening for incoming connections
+    if (listen(serverSocket, SOMAXCONN) == SOCKET_ERROR) {
+        std::cerr << "Failed to listen for connections." << std::endl;
+        closesocket(serverSocket);
+        WSACleanup();
+        return 1;
+    }
+
+    std::cout << "Server started. Listening for connections..." << std::endl;
+
+    while (true) {
+        // Accept incoming connections
+        sockaddr_in clientAddress{};
+        int clientAddressLength = sizeof(clientAddress);
+        SOCKET clientSocket = accept(serverSocket, reinterpret_cast<sockaddr*>(&clientAddress), &clientAddressLength);
+        if (clientSocket == INVALID_SOCKET) {
+            std::cerr << "Failed to accept connection." << std::endl;
+            closesocket(serverSocket);
+            WSACleanup();
+            return 1;
+        }
+
+        std::cout << "Client connected." << std::endl;
+
+        // Send a welcome message to the client
+        const char* welcomeMessage = "Welcome to the server!";
+        send(clientSocket, welcomeMessage, strlen(welcomeMessage), 0);
+
+        IKinectSensor* kinectSensor;
+        HRESULT hr = GetDefaultKinectSensor(&kinectSensor);
+        if (FAILED(hr))
+        {
+            std::cout << "Failed to initialize Kinect sensor!" << std::endl;
+            return 1;
+        }
+
+        hr = kinectSensor->Open();
+        if (FAILED(hr))
+        {
+            std::cout << "Failed to open Kinect sensor!" << std::endl;
+            return 1;
+        }
+
+        IBodyFrameSource* bodyFrameSource;
+        hr = kinectSensor->get_BodyFrameSource(&bodyFrameSource);
+        if (FAILED(hr))
+        {
+            std::cout << "Failed to get body frame source!" << std::endl;
+            return 1;
+        }
+
+        IBodyFrameReader* bodyFrameReader;
+        hr = bodyFrameSource->OpenReader(&bodyFrameReader);
+        if (FAILED(hr))
+        {
+            std::cout << "Failed to open body frame reader!" << std::endl;
+            return 1;
+        }
+
+        std::cout << "Kinect skeleton tracking started. Press Ctrl+C to exit." << std::endl;
+
+        bool sendOutput = true;
+
+        while (true) {
+        
+            IBodyFrame* bodyFrame;
+            hr = bodyFrameReader->AcquireLatestFrame(&bodyFrame);
+            if (SUCCEEDED(hr))
+            {
+                const int BODYCOUNT = 6; // Number of bodies to track
+                std::vector<std::string> outputs;
+                IBody* bodies[BODYCOUNT] = { nullptr };
+                hr = bodyFrame->GetAndRefreshBodyData(BODYCOUNT, bodies);
+                if (SUCCEEDED(hr))
+                {
+                    for (int i = 0; i < BODYCOUNT; i++)
+                    {
+                        std::string output;
+                        BOOLEAN isTracked = false;
+                        bodies[i]->get_IsTracked(&isTracked);
+                        if (isTracked)
+                        {
+                            Joint joints[JointType_Count];
+                            bodies[i]->GetJoints(JointType_Count, joints);
+
+                            // Example: Access joint positions
+                            CameraSpacePoint spineBasePos = joints[JointType_SpineBase].Position;
+                            CameraSpacePoint leftHandPos = joints[JointType_HandLeft].Position;
+                            CameraSpacePoint rightHandPos = joints[JointType_HandRight].Position;
+
+                            // Calculate the angles
+                            int rightShoulderAngle = CalculateAngle(joints[JointType_ShoulderRight], joints[JointType_ElbowRight], joints[JointType_WristRight]);
+                            int leftShoulderAngle = CalculateAngle(joints[JointType_ShoulderLeft], joints[JointType_ElbowLeft], joints[JointType_WristLeft]);
+                            int rightElbowAngle = CalculateAngle(joints[JointType_ShoulderRight], joints[JointType_ElbowRight], joints[JointType_WristRight]);
+                            int leftElbowAngle = CalculateAngle(joints[JointType_ShoulderLeft], joints[JointType_ElbowLeft], joints[JointType_WristLeft]);
+                            int spineAngle = CalculateAngle(joints[JointType_SpineBase], joints[JointType_SpineShoulder], joints[JointType_Head]);
+
+                            
+                            // Create the output string
+                            output += "(" + std::to_string(static_cast<int>(spineBasePos.X * 1000)) + ", " + std::to_string(static_cast<int>(spineBasePos.Y * 1000)) + ", " + std::to_string(static_cast<int>(spineBasePos.Z * 1000)) + ", ";
+                            output += std::to_string(static_cast<int>(leftHandPos.X * 1000)) + ", " + std::to_string(static_cast<int>(leftHandPos.Y * 1000)) + ", " + std::to_string(static_cast<int>(leftHandPos.Z * 1000)) + ", ";
+                            output += std::to_string(static_cast<int>(rightHandPos.X * 1000)) + ", " + std::to_string(static_cast<int>(rightHandPos.Y * 1000)) + ", " + std::to_string(static_cast<int>(rightHandPos.Z * 1000)) + ", ";
+                            output += std::to_string(rightShoulderAngle) + ", ";
+                            output += std::to_string(leftShoulderAngle) + ", ";
+                            output += std::to_string(rightElbowAngle) + ", ";
+                            output += std::to_string(leftElbowAngle) + ", ";
+                            output += std::to_string(spineAngle) + ") " + "\n";
+
+                            // Receive data from the client
+                            char buffer[4096]; // Buffer to store received data
+                            int bytesRead = recv(clientSocket, buffer, sizeof(buffer), 0);
+                            if (bytesRead > 0) {
+                                std::string receivedMessage(buffer, bytesRead);
+                                if (receivedMessage == "send") {
+                                    sendOutput = true;
+                                }
+                            }
+
+                            Sleep(3000);
+
+                            if (sendOutput) {
+                                // Create the output array
+                                char* outputData = new char[output.size() + 1]; // +1 for the null terminator
+
+                                // Copy the output string to the output array
+                                std::copy(output.begin(), output.end(), outputData);
+
+                                // Null terminate the output array
+                                outputData[output.size()] = '\0';
+
+                                // Send the output array
+                                send(clientSocket, outputData, output.size(), 0);
+
+                                // Cleanup the dynamically allocated memory
+                                delete[] outputData;
+                            }
+                        }
+                    }
+                }
+
+                SafeRelease(bodyFrame);
+            }
+
+            // Receive data from the client
+            char buffer[4096]; // Buffer to store received data
+            int bytesRead = recv(clientSocket, buffer, sizeof(buffer), 0);
+            if (bytesRead <= 0) {
+                std::string receivedMessage(buffer, bytesRead);
+                if (receivedMessage == "send") {
+                    sendOutput = true;
+                }
+            }
+        }
+
+        // Close the client socket
+        closesocket(clientSocket);
+    }
+
+    // Cleanup Winsock
+    closesocket(serverSocket);
+    WSACleanup();
+
+    return 0;
+}
