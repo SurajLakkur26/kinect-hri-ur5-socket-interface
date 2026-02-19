@@ -1,4 +1,4 @@
-# Kinect-Based Human–Robot Interaction via Socket Interface (UR5)
+# Kinect-Based Human-Robot Interaction via Socket Interface (UR5)
 
 This repository contains a C++ implementation of a **Kinect-based gesture and posture tracking pipeline** that streams skeletal joint positions and joint angles over a TCP socket for human–robot interaction (HRI). The current implementation targets a **UR5 robot** as the client, with **Kinova robot integration planned only as future work** (not implemented in this project).
 
