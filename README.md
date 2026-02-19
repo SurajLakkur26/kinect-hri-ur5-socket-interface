@@ -15,7 +15,7 @@ These values are formatted as a linear array and streamed via **TCP/IP** to a cl
 
 ## 2. Functionality
 
-The main file `Final.cpp` performs:
+The main file `Socket_Test` performs:
 
 - Initializes **Winsock** TCP server on port `8080`
 - Kinect sensor initialization via `IKinectSensor`/`IBodyFrameReader`
@@ -38,9 +38,9 @@ The main file `Final.cpp` performs:
 
 ## 4. Source Code
 
-- `src/Final.cpp`: Kinect init, angle calculation, TCP server, streaming loop, test sections
-- `docs/Content.md`: Kinect features, SocketTest/UR5 explanation
-- `docs/Source-code-guide.md`: Code sections, array indices for future Kinova integration
+- `Source_Code/Socket_Test`: Kinect init, angle calculation, TCP server, streaming loop, test sections
+- `Source_Code/Kinova_Python`: Kinect init, angle calculation, TCP server, streaming loop, test sections, but for Python
+- `Guide_Document/Source-code-guide.md`: Code sections, array indices for future Kinova integration
 
 ## 5. Requirements
 
